@@ -139,6 +139,7 @@ namespace CommonCode
             if (string.IsNullOrEmpty(dll))
                 dll = "*.UI.*.dll";
 
+
             Assembly assy = ClientAssemblyRetriever.ForILaunch(oTrans).RetrieveAssembly(dll);
             if (assy == null)
                 foreach (string x in Directory.GetFiles(o.EpicorClientFolder, dll))
@@ -496,7 +497,8 @@ namespace CommonCode
                     dll = "*.UI.*.dll";
 
 
-                Assembly assy = ClientAssemblyRetriever.ForILaunch(oTrans).RetrieveAssembly(dll);
+                Assembly assy;
+                try { assy = ClientAssemblyRetriever.ForILaunch(oTrans).RetrieveAssembly(dll); } catch (Exception) { assy = null;  }
                 Log.Debug("Finding File");
                 string s = "";
                 if (assy == null)
@@ -512,7 +514,10 @@ namespace CommonCode
                     }
                 s = assy.Location;
                 var typeE = assy.DefinedTypes.Where(r => r.FullName.ToUpper().Contains(o.Key2.ToUpper())).FirstOrDefault();
-
+                if (typeE == null)
+                {   //5/3/21 TP added for finding exportPanel1
+                    typeE = assy.DefinedTypes.Where(r => r.FullName.ToUpper().Contains(o.Key2.Substring(0,o.Key2.Length-1).ToUpper())).FirstOrDefault();
+                }
                 var typeTList = assy.DefinedTypes.Where(r => r.BaseType!=null && (r.BaseType.Name.Equals("EpiTransaction") || r.BaseType.Name.Equals("EpiMultiViewTransaction") || r.BaseType.Name.Equals("EpiSingleViewTransaction") || r.BaseType.Name.Equals("UDMultiViewTransaction") || r.BaseType.Name.Equals("UDSingleViewTransaction") || r.BaseType.Name.Equals("EpiReportTransaction") || r.BaseType.Name.Equals("EpiSchedulingTransaction"))).ToList();
                 if (typeTList != null && typeTList.Count > 0)
                     foreach (var typeT in typeTList)
@@ -523,10 +528,19 @@ namespace CommonCode
                                 epiTransaction = Activator.CreateInstance(typeT, new object[] { oTrans });
                             else
                                 epiTransaction = new EpiTransaction(oTrans);
-                            if(typeE.Name.Contains("DynamicCriteriaReportForm"))
-                                epiBaseForm = Activator.CreateInstance(typeE, new object[] { epiTransaction,true });
+                            if (typeE != null && typeE.Name.Contains("DynamicCriteriaReportForm"))
+                                epiBaseForm = Activator.CreateInstance(typeE, new object[] { epiTransaction, true });
                             else
-                                epiBaseForm = Activator.CreateInstance(typeE, new object[] { epiTransaction });
+                            {
+                                try
+                                {
+                                    epiBaseForm = Activator.CreateInstance(typeE, new object[] { epiTransaction });
+                                }
+                                catch (Exception ex)
+                                {   //to allow customization of subforms 4/30/21 TP
+                                    epiBaseForm = Activator.CreateInstance(typeof(EpiBaseForm), new object[] { epiTransaction });
+                                }
+                            }
                             break;
                         }
                         catch (Exception)
@@ -535,7 +549,15 @@ namespace CommonCode
                 else
                 {
                     epiTransaction = new EpiTransaction(oTrans);
-                    epiBaseForm = Activator.CreateInstance(typeE, new object[] { epiTransaction });
+                    try
+                    {
+                        epiBaseForm = Activator.CreateInstance(typeE, new object[] { epiTransaction });
+                    }
+                    catch(Exception ex)
+                    {
+                        //to allow customization of memo form 4/30/21 TP
+                        epiBaseForm = Activator.CreateInstance(typeof(EpiBaseForm), new object[] { epiTransaction });
+                    }
                 }
 
 
@@ -1013,7 +1035,7 @@ namespace CommonCode
 
                 s = assy.Location;
                 var typeE = assy.DefinedTypes.Where(r => r.FullName.ToUpper().Contains(o.Key2.ToUpper())).FirstOrDefault();
-                var typeTList = assy.DefinedTypes.Where(r => r.BaseType!=null && r.BaseType.Name.Equals("EpiTransaction")).ToList();
+                var typeTList = assy.DefinedTypes.Where(r => r.BaseType != null && r.BaseType.Name.Equals("EpiTransaction")).ToList();
 
                 epiTransaction = new EpiTransaction(oTrans);
 
@@ -1093,7 +1115,7 @@ namespace CommonCode
                     match = match.NextMatch();
                 }
                 o.Version = ds.XXXDef[0].SysRevID;
-                Dictionary<decimal,string> netver = new Dictionary<decimal, string>();
+                Dictionary<decimal, string> netver = new Dictionary<decimal, string>();
                 GenerateRefs(refds, csmR, o, netver);
                 ExportCustmization(nds, ad, o);
                 Resync(o, refds, ds, nds, csmR, netver);
